@@ -72,7 +72,7 @@ export const InterviewerDashboard: React.FC = () => {
             <span className="w-2 h-2 rounded-full bg-emerald-400" />
             Panel Wawancara Resmi PEMIRA
           </span>
-          <h2 className="text-2xl sm:text-3xl font-black tracking-tight leading-tight">
+          <h2 className="text-xl sm:text-3xl font-black tracking-tight leading-tight break-words">
             Halo, {user?.name}
           </h2>
           <p className="text-xs sm:text-sm text-indigo-200 mt-2 leading-relaxed">

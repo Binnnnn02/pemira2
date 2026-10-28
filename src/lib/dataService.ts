@@ -76,7 +76,14 @@ function setStored<T>(key: string, value: T): void {
   }
 }
 
+// Saklar utama Mode Demo. Default: NONAKTIF (aplikasi memakai Supabase).
+// Untuk mengaktifkan kembali mode demo, set VITE_ENABLE_DEMO_MODE=true di .env.
+// Saat menjalankan test (vitest), mode demo otomatis aktif agar test memakai data lokal.
+export const DEMO_MODE_ENABLED: boolean =
+  import.meta.env.VITE_ENABLE_DEMO_MODE === 'true' || import.meta.env.MODE === 'test';
+
 export function isUsingDemoMode(): boolean {
+  if (!DEMO_MODE_ENABLED) return false;
   const forced = safeGetItem(STORAGE_KEYS.DEMO_MODE_OVERRIDE);
   if (forced !== null) {
     return forced === 'true';
@@ -103,8 +110,8 @@ export function resetMockDatabase(): void {
   safeSetItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(INITIAL_AUDIT_LOGS));
 }
 
-// Initialize if empty
-if (!safeGetItem(STORAGE_KEYS.PERIODS)) {
+// Initialize if empty (hanya untuk mode demo)
+if (DEMO_MODE_ENABLED && !safeGetItem(STORAGE_KEYS.PERIODS)) {
   resetMockDatabase();
 }
 

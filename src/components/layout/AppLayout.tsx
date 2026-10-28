@@ -141,7 +141,7 @@ export const AppLayout: React.FC = () => {
         </div>
       )}
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden">
         {/* Sidebar for Desktop */}
         <aside className="hidden lg:flex lg:flex-col w-64 bg-slate-900 border-r border-slate-800 text-slate-300">
           {/* Brand Header */}
@@ -254,7 +254,7 @@ export const AppLayout: React.FC = () => {
         </aside>
 
         {/* Mobile Header & Sidebar */}
-        <div className="lg:hidden flex flex-col flex-1">
+        <div className="lg:hidden flex flex-col w-full shrink-0">
           {/* Mobile Top Navbar */}
           <header className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between border-b border-slate-800">
             <div className="flex items-center gap-2.5">
@@ -321,7 +321,7 @@ export const AppLayout: React.FC = () => {
         </div>
 
         {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto bg-slate-50 flex flex-col">
+        <main className="flex-1 min-w-0 w-full overflow-y-auto bg-slate-50 flex flex-col">
           {/* Top Sub-Header Bar (Desktop) */}
           <div className="hidden lg:flex items-center justify-between px-8 py-4 bg-white border-b border-slate-200/80 shadow-2xs">
             <div className="flex items-center gap-3">

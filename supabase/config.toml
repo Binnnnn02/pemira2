@@ -1,0 +1,2 @@
+[functions.create-interviewer]
+verify_jwt = false
