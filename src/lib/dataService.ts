@@ -603,6 +603,36 @@ export const dataService = {
   // --- ASSIGNMENTS & RULES ---
   // RULE: Exactly one active interviewer per candidate in one period!
   async getAssignments(periodId?: string, interviewerId?: string): Promise<InterviewerAssignment[]> {
+    // Production data must come from Supabase, not this browser's localStorage.
+    if (!isUsingDemoMode()) {
+      let query = supabase.from('interviewer_assignments').select('*');
+      if (periodId) query = query.eq('period_id', periodId);
+      if (interviewerId) query = query.eq('interviewer_id', interviewerId);
+      const { data: assignmentRows, error: assignmentError } = await query.order('created_at', { ascending: false });
+      if (assignmentError) throw new Error(`Gagal mengambil penugasan dari Supabase: ${assignmentError.message}`);
+      const assignments = (assignmentRows ?? []) as InterviewerAssignment[];
+      if (assignments.length === 0) return [];
+
+      const ids = assignments.map((assignment) => assignment.id);
+      const [candidates, users, scheduleResult, assessmentResult] = await Promise.all([
+        this.getCandidates(),
+        this.getUsers(),
+        supabase.from('interview_schedules').select('*').in('assignment_id', ids),
+        supabase.from('assessments').select('*').in('assignment_id', ids)
+      ]);
+      if (scheduleResult.error) throw new Error(`Gagal mengambil jadwal: ${scheduleResult.error.message}`);
+      if (assessmentResult.error) throw new Error(`Gagal mengambil penilaian: ${assessmentResult.error.message}`);
+      const schedules = (scheduleResult.data ?? []) as InterviewSchedule[];
+      const assessments = (assessmentResult.data ?? []) as Assessment[];
+      return assignments.map((assignment) => ({
+        ...assignment,
+        candidate: candidates.find((candidate) => candidate.id === assignment.candidate_id),
+        interviewer: users.find((user) => user.id === assignment.interviewer_id),
+        schedule: schedules.find((schedule) => schedule.assignment_id === assignment.id),
+        assessment: assessments.find((assessment) => assessment.assignment_id === assignment.id)
+      }));
+    }
+
     const assignments = getStored<InterviewerAssignment[]>(STORAGE_KEYS.ASSIGNMENTS, INITIAL_ASSIGNMENTS);
     const candidates = await this.getCandidates();
     const users = await this.getUsers();
