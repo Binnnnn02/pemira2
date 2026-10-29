@@ -122,6 +122,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const quickLoginAs = async (targetRole: UserRole) => {
+    // Akses cepat hanya tersedia saat Mode Demo aktif
+    if (!isDemoMode) return;
     setIsLoading(true);
     try {
       const users = await dataService.getUsers();

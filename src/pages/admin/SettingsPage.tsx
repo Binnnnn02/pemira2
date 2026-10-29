@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Save, Settings2, Trash2 } from 'lucide-react';
+import { CloudUpload, Plus, Save, Settings2, Trash2 } from 'lucide-react';
 import { dataService, DEFAULT_APP_SETTINGS, type AppSettings } from '../../lib/dataService';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
@@ -11,6 +11,9 @@ export const SettingsPage: React.FC = () => {
   const [newPosition, setNewPosition] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [localInfo, setLocalInfo] = useState(() => dataService.getLocalSyncSummary());
+  const syncLocal = async () => { setSyncing(true); try { const r = await dataService.migrateLocalDataToServer(user || undefined); setLocalInfo(dataService.getLocalSyncSummary()); if (r.errors.length) error('Sebagian gagal disinkronkan', r.errors[0]); else success('Sinkronisasi selesai', `${r.assignments} penugasan, ${r.schedules} jadwal, ${r.assessments} penilaian dikirim ke server.`); } catch (e) { error('Gagal sinkronisasi', e instanceof Error ? e.message : 'Terjadi kesalahan.'); } finally { setSyncing(false); } };
   useEffect(() => { dataService.getAppSettings().then(setSettings).catch((e) => error('Gagal memuat pengaturan', e.message)).finally(() => setLoading(false)); }, []);
   const update = (key: 'event_name' | 'school_name' | 'organization_name', value: string) => setSettings((old) => ({ ...old, [key]: value }));
   const save = async (e: React.FormEvent) => { e.preventDefault(); setSaving(true); try { const saved = await dataService.saveAppSettings(settings, user || undefined); setSettings(saved); success('Pengaturan disimpan', 'Identitas kegiatan dan daftar jabatan berhasil diperbarui.'); } catch (e) { error('Gagal menyimpan', e instanceof Error ? e.message : 'Terjadi kesalahan.'); } finally { setSaving(false); } };
@@ -26,5 +29,6 @@ export const SettingsPage: React.FC = () => {
       </section>
       <div className="flex justify-end"><button disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-60"><Save className="h-4 w-4"/>{saving ? 'Menyimpan...' : 'Simpan Pengaturan'}</button></div>
     </form>}
+    {localInfo.assignments > 0 && <section className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-5 shadow-sm"><div className="flex items-start gap-3"><div className="rounded-xl bg-amber-100 p-2.5 text-amber-700"><CloudUpload className="h-5 w-5" /></div><div><h3 className="font-bold text-slate-900">Sinkronkan data lama ke server</h3><p className="mt-1 text-xs leading-relaxed text-slate-600">Ditemukan {localInfo.assignments} penugasan, {localInfo.schedules} jadwal, dan {localInfo.assessments} penilaian yang masih tersimpan hanya di browser ini, sehingga belum terlihat oleh akun pewawancara. Klik tombol di bawah untuk mengirimkannya ke server. Data di browser tidak dihapus dan data yang sudah ada di server tidak ditimpa.</p></div></div><div className="flex justify-end"><button type="button" onClick={syncLocal} disabled={syncing} className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-amber-700 disabled:opacity-60"><CloudUpload className="h-4 w-4"/>{syncing ? 'Menyinkronkan...' : 'Sinkronkan Sekarang'}</button></div></section>}
   </div>;
 };
