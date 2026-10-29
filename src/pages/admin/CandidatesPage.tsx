@@ -42,7 +42,7 @@ export const CandidatesPage: React.FC = () => {
   const [formFullName, setFormFullName] = useState('');
   const [formNisn, setFormNisn] = useState('');
   const [formClassGrade, setFormClassGrade] = useState('');
-  const [formTargetPosition, setFormTargetPosition] = useState('Ketua OSIS');
+  const [formTargetPosition, setFormTargetPosition] = useState('Ketua Umum');
   const [formVision, setFormVision] = useState('');
   const [formMission, setFormMission] = useState('');
   const [formPhotoUrl, setFormPhotoUrl] = useState('');
@@ -79,7 +79,7 @@ export const CandidatesPage: React.FC = () => {
     setFormFullName('');
     setFormNisn('');
     setFormClassGrade('');
-    setFormTargetPosition('Ketua OSIS');
+    setFormTargetPosition('Ketua Umum');
     setFormVision('');
     setFormMission('');
     setFormPhotoUrl('');

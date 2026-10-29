@@ -415,7 +415,8 @@ export const dataService = {
       let query = supabase.from('candidates').select('*').order('candidate_number', { ascending: true });
       if (periodId) query = query.eq('period_id', periodId);
       const { data, error } = await query;
-      if (!error && data) return data as Candidate[];
+      if (error) throw new Error(`Gagal mengambil kandidat dari Supabase: ${error.message}`);
+      return (data || []) as Candidate[];
     }
 
     const candidates = getStored<Candidate[]>(STORAGE_KEYS.CANDIDATES, INITIAL_CANDIDATES);
@@ -496,7 +497,8 @@ export const dataService = {
   async getUsers(): Promise<UserProfile[]> {
     if (!isUsingDemoMode()) {
       const { data, error } = await supabase.from('profiles').select('*').order('name', { ascending: true });
-      if (!error && data) return data as UserProfile[];
+      if (error) throw new Error(`Gagal mengambil profil pengguna dari Supabase: ${error.message}`);
+      return (data || []) as UserProfile[];
     }
     return getStored<UserProfile[]>(STORAGE_KEYS.USERS, INITIAL_USERS);
   },
@@ -601,53 +603,21 @@ export const dataService = {
   // --- ASSIGNMENTS & RULES ---
   // RULE: Exactly one active interviewer per candidate in one period!
   async getAssignments(periodId?: string, interviewerId?: string): Promise<InterviewerAssignment[]> {
-    if (!isUsingDemoMode()) {
-      let query = supabase
-        .from('interviewer_assignments')
-        .select('*, candidate:candidates(*), interviewer:profiles(*), schedule:interview_schedules(*), assessment:assessments(*)')
-        .order('assigned_at', { ascending: true });
-      if (periodId) query = query.eq('period_id', periodId);
-      if (interviewerId) query = query.eq('interviewer_id', interviewerId).eq('status', 'active');
-      const { data, error } = await query;
-      if (error) throw new Error(error.message);
-      return (data || []).map((a: any) => {
-        const schedules = Array.isArray(a.schedule) ? a.schedule : a.schedule ? [a.schedule] : [];
-        schedules.sort((x: any, y: any) => String(y.updated_at || '').localeCompare(String(x.updated_at || '')));
-        const assessment = firstOrUndef(a.assessment);
-        return {
-          ...a,
-          candidate: firstOrUndef(a.candidate),
-          interviewer: firstOrUndef(a.interviewer),
-          schedule: schedules[0],
-          assessment: assessment ? normalizeAssessment(assessment) : undefined
-        } as InterviewerAssignment;
-      });
-    }
-
     const assignments = getStored<InterviewerAssignment[]>(STORAGE_KEYS.ASSIGNMENTS, INITIAL_ASSIGNMENTS);
     const candidates = await this.getCandidates();
     const users = await this.getUsers();
     const schedules = getStored<InterviewSchedule[]>(STORAGE_KEYS.SCHEDULES, INITIAL_SCHEDULES);
     const assessments = getStored<Assessment[]>(STORAGE_KEYS.ASSESSMENTS, INITIAL_ASSESSMENTS);
-
     let filtered = assignments;
     if (periodId) filtered = filtered.filter((a) => a.period_id === periodId);
     if (interviewerId) filtered = filtered.filter((a) => a.interviewer_id === interviewerId);
-
-    // Enrich with joins
-    return filtered.map((a) => {
-      const candidate = candidates.find((c) => c.id === a.candidate_id);
-      const interviewer = users.find((u) => u.id === a.interviewer_id);
-      const schedule = schedules.find((s) => s.assignment_id === a.id);
-      const assessment = assessments.find((ass) => ass.assignment_id === a.id);
-      return {
-        ...a,
-        candidate,
-        interviewer,
-        schedule,
-        assessment
-      };
-    });
+    return filtered.map((a) => ({
+      ...a,
+      candidate: candidates.find((c) => c.id === a.candidate_id),
+      interviewer: users.find((u) => u.id === a.interviewer_id),
+      schedule: schedules.find((s) => s.assignment_id === a.id),
+      assessment: assessments.find((ass) => ass.assignment_id === a.id)
+    }));
   },
 
   async assignInterviewer(
@@ -656,168 +626,146 @@ export const dataService = {
     interviewerId: string,
     actor?: UserProfile
   ): Promise<InterviewerAssignment> {
-    if (!isUsingDemoMode()) {
-      const { data: candidate, error: cErr } = await supabase.from('candidates').select('*').eq('id', candidateId).maybeSingle();
-      if (cErr) throw new Error(cErr.message);
-      if (!candidate) throw new Error('Kandidat tidak ditemukan.');
-      const { data: interviewer, error: iErr } = await supabase.from('profiles').select('*').eq('id', interviewerId).maybeSingle();
-      if (iErr) throw new Error(iErr.message);
-      if (!interviewer) throw new Error('Pewawancara tidak ditemukan.');
-
-      // RULE: tepat 1 pewawancara aktif per kandidat per periode
-      const { data: existing, error: eErr } = await supabase
-        .from('interviewer_assignments')
-        .select('*')
-        .eq('period_id', periodId)
-        .eq('candidate_id', candidateId)
-        .eq('status', 'active')
-        .maybeSingle();
-      if (eErr) throw new Error(eErr.message);
-      if (existing) {
-        if (existing.interviewer_id === interviewerId) return existing as InterviewerAssignment;
-        const { error: repErr } = await supabase.from('interviewer_assignments').update({ status: 'replaced' }).eq('id', existing.id);
-        if (repErr) throw new Error(repErr.message);
-      }
-
-      const { data: created, error: insErr } = await supabase
-        .from('interviewer_assignments')
-        .insert({ period_id: periodId, candidate_id: candidateId, interviewer_id: interviewerId, status: 'active' })
-        .select()
-        .single();
-      if (insErr) throw new Error(insErr.message);
-
-      await this.logActivity(
-        'ASSIGN_INTERVIEWER',
-        'assignment',
-        created.id,
-        { candidate: candidate.full_name, interviewer: interviewer.name },
-        actor
-      );
-      return { ...(created as InterviewerAssignment), candidate: candidate as Candidate, interviewer: interviewer as UserProfile };
-    }
-
     const assignments = getStored<InterviewerAssignment[]>(STORAGE_KEYS.ASSIGNMENTS, INITIAL_ASSIGNMENTS);
-    const candidates = await this.getCandidates();
+    const candidates = await this.getCandidates(periodId);
     const users = await this.getUsers();
-
     const candidate = candidates.find((c) => c.id === candidateId);
     const interviewer = users.find((u) => u.id === interviewerId);
-
     if (!candidate) throw new Error('Kandidat tidak ditemukan.');
-    if (!interviewer) throw new Error('Pewawancara tidak ditemukan.');
+    if (!interviewer) throw new Error('Pewawancara tidak ditemukan atau tidak dapat diakses.');
 
-    // RULE ENFORCEMENT: Exactly 1 active interviewer per candidate per period!
-    const existingActiveIndex = assignments.findIndex(
-      (a) => a.period_id === periodId && a.candidate_id === candidateId && a.status === 'active'
-    );
-
-    let assignment: InterviewerAssignment;
-
-    if (existingActiveIndex !== -1) {
-      const oldAssignment = assignments[existingActiveIndex];
-      if (oldAssignment.interviewer_id === interviewerId) {
-        return oldAssignment; // already assigned
+    if (!isUsingDemoMode()) {
+      const { data: existing, error: readError } = await supabase
+        .from('interviewer_assignments').select('*')
+        .eq('period_id', periodId).eq('candidate_id', candidateId).eq('status', 'active').maybeSingle();
+      if (readError) throw new Error(`Gagal memeriksa penugasan lama: ${readError.message}`);
+      if (existing?.interviewer_id === interviewerId) {
+        return { ...(existing as InterviewerAssignment), candidate, interviewer };
       }
-      // Reassign: set old to replaced and create new active, or update
-      assignments[existingActiveIndex].status = 'replaced';
+      if (existing) {
+        const { error: updateError } = await supabase.from('interviewer_assignments')
+          .update({ status: 'replaced' }).eq('id', existing.id);
+        if (updateError) throw new Error(`Gagal memperbarui penugasan lama: ${updateError.message}`);
+      }
+      const { data, error } = await supabase.from('interviewer_assignments').insert({
+        period_id: periodId, candidate_id: candidateId, interviewer_id: interviewerId, status: 'active'
+      }).select('*').single();
+      if (error) throw new Error(`Gagal menyimpan penugasan: ${error.message}`);
+      const assignment = { ...(data as InterviewerAssignment), candidate, interviewer };
+      await this.logActivity('ASSIGN_INTERVIEWER', 'assignment', assignment.id,
+        { candidate: candidate.full_name, interviewer: interviewer.name }, actor);
+      return assignment;
     }
 
-    assignment = {
-      id: 'asg-' + Date.now(),
-      period_id: periodId,
-      candidate_id: candidateId,
-      interviewer_id: interviewerId,
-      status: 'active',
-      assigned_at: new Date().toISOString(),
-      created_at: new Date().toISOString(),
-      candidate,
-      interviewer
+    const existingActiveIndex = assignments.findIndex((a) => a.period_id === periodId && a.candidate_id === candidateId && a.status === 'active');
+    if (existingActiveIndex !== -1) {
+      if (assignments[existingActiveIndex].interviewer_id === interviewerId) return assignments[existingActiveIndex];
+      assignments[existingActiveIndex].status = 'replaced';
+    }
+    const assignment: InterviewerAssignment = {
+      id: 'asg-' + Date.now(), period_id: periodId, candidate_id: candidateId, interviewer_id: interviewerId,
+      status: 'active', assigned_at: new Date().toISOString(), created_at: new Date().toISOString(), candidate, interviewer
     };
-
     assignments.push(assignment);
     setStored(STORAGE_KEYS.ASSIGNMENTS, assignments);
-
-    await this.logActivity(
-      'ASSIGN_INTERVIEWER',
-      'assignment',
-      assignment.id,
-      { candidate: candidate.full_name, interviewer: interviewer.name },
-      actor
-    );
-
+    await this.logActivity('ASSIGN_INTERVIEWER', 'assignment', assignment.id,
+      { candidate: candidate.full_name, interviewer: interviewer.name }, actor);
     return assignment;
   },
 
   // --- SCHEDULES ---
   async getSchedules(periodId?: string, interviewerId?: string): Promise<InterviewSchedule[]> {
+    const assignments = await this.getAssignments(periodId, interviewerId);
+    const assignmentIds = assignments.map((assignment) => assignment.id);
+    if (assignmentIds.length === 0) return [];
+
     if (!isUsingDemoMode()) {
-      const remoteAssignments = await this.getAssignments(periodId, interviewerId);
-      const ids = remoteAssignments.map((a) => a.id);
-      if (ids.length === 0) return [];
-      const { data, error } = await supabase.from('interview_schedules').select('*').in('assignment_id', ids);
-      if (error) throw new Error(error.message);
-      return (data || []) as InterviewSchedule[];
+      const { data, error } = await supabase
+        .from('interview_schedules')
+        .select('*')
+        .in('assignment_id', assignmentIds)
+        .order('scheduled_at', { ascending: true });
+      if (error) throw new Error(`Gagal mengambil jadwal wawancara: ${error.message}`);
+      return (data ?? []) as InterviewSchedule[];
     }
 
-    const assignments = await this.getAssignments(periodId, interviewerId);
-    const assignmentIds = new Set(assignments.map((a) => a.id));
     const schedules = getStored<InterviewSchedule[]>(STORAGE_KEYS.SCHEDULES, INITIAL_SCHEDULES);
-    return schedules.filter((s) => assignmentIds.has(s.assignment_id));
+    const allowedIds = new Set(assignmentIds);
+    return schedules
+      .filter((schedule) => allowedIds.has(schedule.assignment_id))
+      .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at));
   },
 
-  async saveSchedule(schedule: Omit<InterviewSchedule, 'id' | 'created_at' | 'updated_at'>, actor?: UserProfile): Promise<InterviewSchedule> {
+  async saveSchedule(
+    schedule: Omit<InterviewSchedule, 'id' | 'created_at' | 'updated_at'>,
+    actor?: UserProfile
+  ): Promise<InterviewSchedule> {
+    if (!schedule.assignment_id || !schedule.scheduled_at || !schedule.location?.trim()) {
+      throw new Error('Penugasan, tanggal, jam, dan lokasi wajib diisi.');
+    }
+
+    let result: InterviewSchedule;
+
     if (!isUsingDemoMode()) {
-      const { data: existing, error: exErr } = await supabase
+      const { data: existing, error: readError } = await supabase
         .from('interview_schedules')
         .select('id')
         .eq('assignment_id', schedule.assignment_id)
-        .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (exErr) throw new Error(exErr.message);
 
-      let saved: any;
+      if (readError) throw new Error(`Gagal memeriksa jadwal lama: ${readError.message}`);
+
       if (existing) {
         const { data, error } = await supabase
           .from('interview_schedules')
           .update({ ...schedule, updated_at: new Date().toISOString() })
           .eq('id', existing.id)
-          .select()
+          .select('*')
           .single();
-        if (error) throw new Error(error.message);
-        saved = data;
+        if (error) throw new Error(`Gagal memperbarui jadwal: ${error.message}`);
+        result = data as InterviewSchedule;
       } else {
-        const { data, error } = await supabase.from('interview_schedules').insert(schedule).select().single();
-        if (error) throw new Error(error.message);
-        saved = data;
+        const { data, error } = await supabase
+          .from('interview_schedules')
+          .insert(schedule)
+          .select('*')
+          .single();
+        if (error) throw new Error(`Gagal menyimpan jadwal: ${error.message}`);
+        result = data as InterviewSchedule;
       }
-      await this.logActivity('SAVE_SCHEDULE', 'schedule', saved.id, { location: saved.location, time: saved.scheduled_at }, actor);
-      return saved as InterviewSchedule;
-    }
-
-    const schedules = getStored<InterviewSchedule[]>(STORAGE_KEYS.SCHEDULES, INITIAL_SCHEDULES);
-    const existingIndex = schedules.findIndex((s) => s.assignment_id === schedule.assignment_id);
-
-    let result: InterviewSchedule;
-    if (existingIndex !== -1) {
-      result = {
-        ...schedules[existingIndex],
-        ...schedule,
-        updated_at: new Date().toISOString()
-      };
-      schedules[existingIndex] = result;
     } else {
-      result = {
-        ...schedule,
-        id: 'sch-' + Date.now(),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      schedules.push(result);
+      const schedules = getStored<InterviewSchedule[]>(STORAGE_KEYS.SCHEDULES, INITIAL_SCHEDULES);
+      const existingIndex = schedules.findIndex(
+        (item) => item.assignment_id === schedule.assignment_id
+      );
+
+      if (existingIndex !== -1) {
+        result = {
+          ...schedules[existingIndex],
+          ...schedule,
+          updated_at: new Date().toISOString()
+        };
+        schedules[existingIndex] = result;
+      } else {
+        result = {
+          ...schedule,
+          id: `sch-${Date.now()}`,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+        schedules.push(result);
+      }
+      setStored(STORAGE_KEYS.SCHEDULES, schedules);
     }
 
-    setStored(STORAGE_KEYS.SCHEDULES, schedules);
-    await this.logActivity('SAVE_SCHEDULE', 'schedule', result.id, { location: result.location, time: result.scheduled_at }, actor);
+    await this.logActivity(
+      'SAVE_SCHEDULE',
+      'schedule',
+      result.id,
+      { location: result.location, time: result.scheduled_at },
+      actor
+    );
     return result;
   },
 
