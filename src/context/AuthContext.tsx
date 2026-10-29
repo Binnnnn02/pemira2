@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, type ReactNode } from 'react';
 import type { UserProfile, UserRole } from '../types';
 import { supabase } from '../lib/supabase';
 import { dataService, isUsingDemoMode, setDemoModeOverride } from '../lib/dataService';
@@ -24,6 +24,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isDemoMode, setIsDemoMode] = useState<boolean>(isUsingDemoMode());
+  const userIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    userIdRef.current = user?.id ?? null;
+  }, [user]);
+
+  // Hanya ganti objek user bila isinya benar-benar berubah, supaya halaman
+  // yang bergantung pada `user` tidak memuat ulang data/form setiap kali tab difokuskan.
+  const applyProfile = (profile: UserProfile) =>
+    setUser((prev) => (prev && JSON.stringify(prev) === JSON.stringify(profile) ? prev : profile));
 
   useEffect(() => {
     const initAuth = async () => {
@@ -68,17 +78,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     // Listen to Supabase auth changes if not in demo mode
     if (!isUsingDemoMode()) {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-        if (session?.user) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
-          if (profile) setUser(profile as UserProfile);
-        } else {
-          setUser(null);
-        }
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        // Sesi awal ditangani initAuth; refresh token tidak mengubah profil.
+        if (event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') return;
+        // Supabase mengirim SIGNED_IN lagi setiap tab difokuskan: abaikan bila user sama.
+        if (event === 'SIGNED_IN' && session?.user && session.user.id === userIdRef.current) return;
+
+        // Jangan await panggilan Supabase langsung di dalam callback (bisa deadlock).
+        setTimeout(async () => {
+          if (session?.user) {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', session.user.id)
+              .single();
+            if (profile) applyProfile(profile as UserProfile);
+          } else {
+            setUser(null);
+          }
+        }, 0);
       });
       return () => subscription.unsubscribe();
     }
@@ -122,6 +140,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const quickLoginAs = async (targetRole: UserRole) => {
+    // Akses cepat hanya tersedia saat Mode Demo aktif
+    if (!isDemoMode) return;
     setIsLoading(true);
     try {
       const users = await dataService.getUsers();

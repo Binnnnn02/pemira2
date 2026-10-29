@@ -71,43 +71,47 @@ export const LoginPage: React.FC = () => {
 
         {/* Login Card */}
         <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-100">
-          {/* Quick Demo Switcher Banner */}
-          <div className="mb-6 p-4 rounded-2xl bg-indigo-50/70 border border-indigo-100">
-            <div className="flex items-center gap-2 mb-2 text-indigo-900 font-bold text-xs">
-              <Sparkles className="w-4 h-4 text-indigo-600" />
-              <span>Akses Cepat Pengujian (Mode Demo)</span>
+          {isDemoMode && (
+            <>
+            {/* Quick Demo Switcher Banner */}
+            <div className="mb-6 p-4 rounded-2xl bg-indigo-50/70 border border-indigo-100">
+              <div className="flex items-center gap-2 mb-2 text-indigo-900 font-bold text-xs">
+                <Sparkles className="w-4 h-4 text-indigo-600" />
+                <span>Akses Cepat Pengujian (Mode Demo)</span>
+              </div>
+              <p className="text-[11px] text-slate-600 mb-3 leading-relaxed">
+                Klik salah satu peran di bawah untuk menguji alur kerja secara langsung tanpa perlu mengetik kredensial:
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleQuickLogin('admin')}
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition shadow-xs"
+                >
+                  <Shield className="w-3.5 h-3.5" />
+                  <span>Masuk Admin</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleQuickLogin('interviewer')}
+                  className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition shadow-xs"
+                >
+                  <UserCheck className="w-3.5 h-3.5" />
+                  <span>Masuk Pewawancara</span>
+                </button>
+              </div>
             </div>
-            <p className="text-[11px] text-slate-600 mb-3 leading-relaxed">
-              Klik salah satu peran di bawah untuk menguji alur kerja secara langsung tanpa perlu mengetik kredensial:
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('admin')}
-                className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition shadow-xs"
-              >
-                <Shield className="w-3.5 h-3.5" />
-                <span>Masuk Admin</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('interviewer')}
-                className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition shadow-xs"
-              >
-                <UserCheck className="w-3.5 h-3.5" />
-                <span>Masuk Pewawancara</span>
-              </button>
-            </div>
-          </div>
 
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-200" />
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-slate-200" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase font-bold text-slate-400 bg-white px-2">
+                atau login manual
+              </div>
             </div>
-            <div className="relative flex justify-center text-xs uppercase font-bold text-slate-400 bg-white px-2">
-              atau login manual
-            </div>
-          </div>
+            </>
+          )}
 
           {/* Manual Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
